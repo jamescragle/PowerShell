@@ -25,7 +25,7 @@ This is optional. By default, the script targets Users and not Unified Groups. C
 This is optional. By default, the script will read the .onmicrosft.com tenant name and assign. Choose you own domain if you need change UPN suffix
 
 .parameter RemoveAlias
-This is optional. By default, m365 unified groups and users when changing the sufix will transfer the old primary as an alias. Select $true if you want it deleted
+This is optional. By default, m365 unified groups and users when changing the sufix will transfer the old primary as an alias. Select $true to delete all aliases and leave only the primary smtp address.
 
 .example
 PS> .\ChangeUpnOrGroup.ps1 -filePath .\fileWithUsers.csv
