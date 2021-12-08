@@ -1,4 +1,4 @@
-﻿<#
+<#
 .synopsis
 Use this script when you need to convert a distribution list to a contact.
 Author: James Cragle
@@ -40,6 +40,7 @@ function retrieveDistroData($currentDistro){
     Write-Log "INFO: Testing for existence of $currentDistro"
     if((Get-DistributionGroup $currentDistro -erroraction "silentlycontinue") -eq $null){
         Write-Log "ALERT: The $currentDistro was not found, skipping."
+        return "@{DisplayName=;PrimarySmtpAddress=}"
     }
     else {
         Write-Log "INFO: Retrieving data for $currentDistro"
@@ -81,7 +82,7 @@ function createContactCard($ContactName, $internalAddress, $forwardingDetails){
     }
 
     Set-MailContact $ContactName -EmailAddresses @{Add="smtp:$($internalAddress)"}
-    Write-Log "SUCCESS: Set the emailaddresses to $mailaddress"
+    Write-Log "SUCCESS: Set the emailaddresses to SMTP: $forwardingDetails, smtp: $internalAddress"
 
 }
 
@@ -95,6 +96,7 @@ csv will need to have a field "DisplayName, ForwardingDetails"
 
 # --- Initialize log files
 
+
 $TimeStamp = Get-Date -Format yyMMddhhmmss
 $RunLog = $TimeStamp + "_ConvertDistroToContact_RunLog.txt"
 $ErrorLog = $TimeStamp + "_ConvertDistroToContact_ErrorLog.txt"
@@ -104,18 +106,19 @@ $DistroGroupDetails = @() #used to pass information between functions
 
 # --- start processing
 if(Test-Path $ImportCsvFile){
+    Connect-ExchangeOnline
     $groups = Import-Csv -Path $ImportCsvFile 
     foreach ($group in $groups){
         if($group.ForwardingDetails -ne ""){
-            $DistroGroupDetails = retrieveDistroData $group.DistroName
+            $DistroGroupDetails = retrieveDistroData $group.DisplayName
             Write-Log "INFO: Data retrieved $DistroGroupDetails"
             if($DistroGroupDetails.PrimarySmtpAddress -ne $null){
-                deleteDistroList $group.DistroName
+                deleteDistroList $group.DisplayName
                 createContactCard $DistroGroupDetails.DisplayName $DistroGroupDetails.PrimarySmtpAddress $group.ForwardingDetails
             }else{
-            Write-Log "ERROR: The $($group.DistroName) could not be deleted and the contact card could not be created."
+            Write-Log "ERROR: The $($group.DisplayName) could not be deleted and the contact card could not be created."
             }
-        }else{Write-Log "ERROR: The Distribution list $($group.DistroName) does not have a ForwardingDetails listed "}
+        }else{Write-Log "ERROR: The Distribution list $($group.DisplayName) does not have a ForwardingDetails listed "}
     }
 
 }
