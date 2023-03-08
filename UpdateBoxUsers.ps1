@@ -173,7 +173,7 @@ Function updateUsers ($batchfile, $mode, $emailcolumn )  {
                     $row = $usersList.NewRow()
                     $row.'Email Address' = $batch.($emailcolumn)
                     $row.Setting = "Error getting user"
-                    $userlist.rows.add($row)
+                    $userslist.rows.add($row)
                     $count = 11
                 }
                 else{
