@@ -44,14 +44,6 @@ function ExportRollupAnalyticsData {
     [string]$OutputFilePath
     )
 
-  <#  # Delete CSV file if existing
-    If (Test-Path $OutputFilePath) {
-	    Remove-Item $OutputFilePath
-    }
-    #>
-    # Write header row to CSV File
-    $OutputHeader = "Scope,Name,URL,Most Recent Day with Usage,Hits - All Time,Unique Users - All Time,Hits - Most Recent Day with Usage,Unique Users - Most Recent Day with Usage,Current Date"
-    $OutputHeader | Out-File $OutputFilePath -Append 
 
     # Get Web Application for Root Site
     $Site = Get-SPSite $RootSiteUrl
@@ -110,7 +102,17 @@ function ExportRollupAnalyticsData {
 # Load the necessary .NET assembly
 Add-Type -AssemblyName System.Windows.Forms
 # where do you want to save the file to? appending the current date to csv file save name
-$FileSaveLocation = "c:\temp\" + (Get-Date -format "yyyyMMdd")
+$FileSaveLocation = "c:\temp\output" + (Get-Date -format "yyyyMMdd") + ".csv"
+
+# Delete CSV file if existing
+  If (Test-Path $FileSaveLocation) {
+	 Remove-Item $FileSaveLocation
+   }
+
+
+# Write header row to CSV File
+$OutputHeader = "Scope,Name,URL,Most Recent Day with Usage,Hits - All Time,Unique Users - All Time,Hits - Most Recent Day with Usage,Unique Users - Most Recent Day with Usage,Current Date"
+$OutputHeader | Out-File $FileSaveLocation -Append 
 
 # Create an OpenFileDialog object
 $FileBrowser = New-Object System.Windows.Forms.OpenFileDialog -Property @{
@@ -123,9 +125,11 @@ $null = $FileBrowser.ShowDialog()
 
 # Access the selected file name (if needed)
 $selectedCsvFile = $FileBrowser.FileName
-$CsvFile = import-csv $selectedcsvfile
+
+$CsvFile = Import-Csv $selectedCsvFile
+
 foreach ($site in $CsvFile){
-    ExportRollupAnalyticsData -RootSiteUrl $site.SiteURL -OutputFilePath $FileSaveLocation -IncludeSites
+    ExportRollupAnalyticsData -RootSiteUrl $site.SiteURL -OutputFilePath $FileSaveLocation -IncludeSites -IncludeWebs
 }
 
 # Sample Usage: Export both SPSite and SPWeb analytics 
