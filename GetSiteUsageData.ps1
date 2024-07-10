@@ -2,10 +2,13 @@
 
 #------------------------------------------------------------------------------------------- 
 # Name:            ExportRollupAnalyticsData
-# Description:     This script will export SharePoint 2013 Web Analytics data to a CSV file
+# Description:     This script will export SharePoint 2013 Web Analytics data to a CSV file based on the imput from a csv file with a column 'SiteURL'
 # Usage:           Run the function with the required parameters.  
-#                  Scope can be all SPSite and / or all SPWeb objects in a Web Application
+#                  Scope can be all SPSite and / or all SPWeb objects in a Web Application. Change this option in line 135. Change line 108 for the output file location.
+#                  A gui will load for you to pick a source csv file from. 
+#
 # Author:          Chris LaQuerre | http://sp2013wade.codeplex.com
+# Updated by:      James Cragle | https://github.com/jamescragle/powershell
 #
 # Reference:       SearchServiceApplicationProxy.GetRollupAnalyticsItemData method parameters
 #                  http://msdn.microsoft.com/en-us/library/office/microsoft.office.server.search.administration.searchserviceapplicationproxy.getrollupanalyticsitemdata.aspx
