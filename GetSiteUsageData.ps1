@@ -123,8 +123,8 @@ $null = $FileBrowser.ShowDialog()
 
 # Access the selected file name (if needed)
 $selectedCsvFile = $FileBrowser.FileName
-
-foreach ($site in $selectedCsvFile){
+$CsvFile = import-csv $selectedcsvfile
+foreach ($site in $CsvFile){
     ExportRollupAnalyticsData -RootSiteUrl $site.SiteURL -OutputFilePath $FileSaveLocation -IncludeSites
 }
 
