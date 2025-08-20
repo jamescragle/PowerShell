@@ -6,6 +6,7 @@ Prerequisites:
 - Install the Microsoft Graph PowerShell SDK (Microsoft.Graph).
 - Run PowerShell as an administrator.
 - Ensure you are signed in with a Global Admin account.
+- The log folder will be created in the same directory as the script. 
 
 How to Run:
 
@@ -52,139 +53,182 @@ Function Get-CSVFilePath {
         throw "No CSV file selected. Script will exit."
     }
 }
+
+# Function to check for the latest version of the Microsoft.Graph module
+Function Test-LatestGraphModule {
+    Write-Host "--------------------------------------------------" -ForegroundColor Cyan
+    Write-Host "Checking for Microsoft.Graph module..." -ForegroundColor Cyan
+    $moduleName = "Microsoft.Graph"
+    
+    # Check if the module is installed
+    $installedModule = Get-InstalledModule -Name $moduleName -ErrorAction SilentlyContinue
+    
+    if (-not $installedModule) {
+        throw "The '$moduleName' module is not installed. Please run 'Install-Module -Name $moduleName' in an elevated PowerShell session and try again."
+    }
+
+    Write-Host "Found installed version: $($installedModule.Version)"
+    
+    # Find the latest version from the PowerShell Gallery
+    try {
+        Write-Host "Checking PowerShell Gallery for the latest version..."
+        # Use -ErrorAction Stop to ensure the catch block is triggered on any error (e.g., no internet)
+        $galleryModule = Find-Module -Name $moduleName -Repository PSGallery -ErrorAction Stop
+        
+        Write-Host "Latest version available: $($galleryModule.Version)"
+        # Compare versions
+        if ([version]$installedModule.Version -lt [version]$galleryModule.Version) {
+            Write-Warning "A newer version of the '$moduleName' module is available ($($galleryModule.Version)). Consider running 'Update-Module -Name $moduleName' for the latest features and fixes."
+        } else {
+            Write-Host "You have the latest version of the '$moduleName' module." -ForegroundColor Green
+        }
+    } catch {
+        Write-Warning "Could not connect to the PowerShell Gallery to check for the latest version. Will proceed with the installed version: $($installedModule.Version)."
+    }
+    Write-Host "--------------------------------------------------" -ForegroundColor Cyan
+}
 # Function to write to logs
 # example usage Write-Log "Please specify either a local upload path or a folder structure JSON path, not both." -output true -color Red
-# exmple using in a catch Write-Log "Failed to load mock employee data. Exits script." -errorMessage "Invalid input data." -output true -color Red 
-Function Write-Log { param ([string]$message, [string]$errorMessage = $null, [Exception]$exception = $null, [string]$output = $false, [string]$color = "Green")
-
-    # Define log level - Can be "errors" or "all"
-    $logLevel = "all"
+# exmple using in a catch Write-Log "Failed to load mock employee data. Exits script." -errorMessage "Invalid input data." -output -color Red 
+Function Write-Log {
+    param (
+        [string]$message,
+        [string]$errorMessage = $null,
+        [System.Exception]$exception = $null,
+        [switch]$output,
+        [string]$color = "Green"
+    )
 
     # Create logs directory if it doesn't exist
-    if (-not (Test-Path ".\logs")) {
-        New-Item -Path . -Name "logs" -ItemType 'directory' > $null
+    $logDir = Join-Path -Path $PSScriptRoot -ChildPath "logs"
+    if (-not (Test-Path $logDir)) {
+        New-Item -Path $logDir -ItemType 'directory' -ErrorAction SilentlyContinue > $null
     }
 
     $dateTime = Get-Date
 
     # Set log filename to the name of the script
-    $logFilename = Get-Script-Name
-    $debugErrorFile = ".\logs\" + $logFilename + "_errors.txt"
-    $debugAllFile = ".\logs\" + $logFilename + "_all.txt"
+    $scriptName = $MyInvocation.MyCommand.Name -replace '\..*$'
+    $debugErrorFile = Join-Path -Path $logDir -ChildPath "${scriptName}_errors.txt"
+    $debugAllFile = Join-Path -Path $logDir -ChildPath "${scriptName}_all.txt"
 
     if ($exception -or $errorMessage) {
         $severity = "ERROR"
     } else {
         $severity = "INFO"
     }
-
-    if ($exception.Response) {
-        $result = $exception.Response.GetResponseStream()
-        $reader = New-Object System.IO.StreamReader($result)
-        $reader.BaseStream.Position = 0
-        $reader.DiscardBufferedData()
-        $responseBody = $reader.ReadToEnd();
-    }
-
+    
     $logMessage = ($severity + "`t")
     $logMessage += ($dateTime)
     $logMessage += ("`t" + $message + "`t")
 
     if ($exception) {
         $logMessage += ($exception.Message + "`t")
+        # Check for Graph-specific error details
+        if ($exception.ErrorDetails) {
+            $logMessage += ("Graph Error: " + ($exception.ErrorDetails | ConvertTo-Json -Depth 3) + "`t")
+        }
     }
 
     if ($errorMessage) {
         $logMessage += ($errorMessage + "`t")
     }
 
-    if ($responseBody) {
-        $logMessage += ("Box responded with: " + $responseBody + "`t")
-    }
-
-    if ($output -eq "true") {
+    if ($output.IsPresent) {
         Write-Host $message -ForegroundColor $color
     }
 
-    if ($logLevel -eq "all") {
-        $logMessage | Add-Content $debugAllFile
-
-        if ($severity -eq "ERROR") {
-            $logMessage | Add-Content $debugErrorFile
-        }
-    } else {
-        if ($severity -eq "ERROR") {
-            $logMessage | Add-Content $debugErrorFile
-        }
+    $logMessage | Add-Content $debugAllFile
+    if ($severity -eq "ERROR") {
+        $logMessage | Add-Content $debugErrorFile
     }
 }
 
+# --- SCRIPT EXECUTION STARTS HERE ---
+Test-LatestGraphModule
+
 # Connect to Microsoft Graph
 Connect-MgGraph -Scopes "Group.ReadWrite.All", "User.Read.All"
+#Select-MgProfile -Name "v1.0"
 
 # Get all Microsoft 365 groups (Unified groups)
 $groups = Get-MgGroup -Filter "groupTypes/any(c:c eq 'Unified')" -All
 
-write-host "checking login status"
-
 # Determine CSV path and load rows once
-if ($CsvPath -and (Test-Path $CsvPath)) {
-    Write-Log "Using provided CSV path: $CsvPath" -output true
-    $csvRows = Import-Csv -Path $CsvPath
-} else {
-    $selectedCsvPath = Get-CSVFilePath
-    Write-Log "Using selected CSV path: $selectedCsvPath" -output true
-    $csvRows = Import-Csv -Path $selectedCsvPath
+if (-not ($CsvPath)) {
+    $CsvPath = Get-CSVFilePath
+} 
+elseif (-not (Test-Path $CsvPath)) {
+    throw "CSV file not found at path: $CsvPath"
 }
+
+Write-Log "Using CSV path: $CsvPath" -output
+$csvRows = Import-Csv -Path $CsvPath
+
+# Cache for destination users to avoid repeated API calls
+$destinationUserCache = @{}
 
 foreach ($group in $groups) {
 
-    Write-Host "Processing group: $($group.DisplayName)"
-    Write-Log "Processing group: $($group.DisplayName)" -output true
+   # Write-Host "Processing group: $($group.DisplayName)"
+    Write-Log "Processing group: $($group.DisplayName)" -output
 
     # Get members of the group
-    $members = Get-MgGroupMember -GroupId $group.Id -All | Where-Object { $_.ODataType -eq "#microsoft.graph.user" }
+    $members = Get-MgGroupMember -GroupId $group.Id -All | Where-Object { $_.AdditionalProperties["@odata.type"] -eq "#microsoft.graph.user" }
 
+    # Get current group member UPNs
+    $memberUPNs = $members | ForEach-Object { $_.AdditionalProperties["userPrincipalName"] }
 
-        # Get current group member UPNs
-        $memberUPNs = $members | ForEach-Object { $_.UserPrincipalName }
+    # Get current group member IDs for skip logic
+    $memberIds = $members | ForEach-Object { $_.Id }
 
-        # Get current group member IDs for skip logic
-        $memberIds = $members | ForEach-Object { $_.Id }
+    foreach ($row in $csvRows) {
+        $sourceUPN = $row.sourcevalue
+        $destinationEmail = $row.destinationvalue
 
-        foreach ($row in $csvRows) {
-            $sourceUPN = $row.sourcevalue
-            $destinationEmail = $row.destinationvalue
-
-            # Check if sourceUPN is a member of the group
-            if ($memberUPNs -contains $sourceUPN) {
-                # Get destination user object by email
-                $destinationUser = Get-MgUser -Filter "mail eq '$destinationEmail'"
-                if ($destinationUser) {
-                    # Skip if already a member
-                    if ($memberIds -contains $destinationUser.Id) {
-                            Write-Host "$destinationUPN is already a member of $($group.DisplayName), skipping."
-                            Write-Log "$destinationUPN is already a member of $($group.DisplayName), skipping." -output true
-                    } else {
-                            Write-Host "Adding $destinationEmail to group $($group.DisplayName)"
-                            Write-Log "Adding $destinationEmail to group $($group.DisplayName)" -output true
-                            if ($TestMode) {
-                                Write-Host "[TEST MODE] No changes committed."
-                                Write-Log "[TEST MODE] Skipped actual add for $destinationEmail to $($group.DisplayName)" -output true -color Yellow
-                            } else {
-                                try {
-                                    Add-MgGroupMember -GroupId $group.Id -DirectoryObjectId $destinationUser.Id
-                                    Write-Log "$destinationEmail successfully added to $($group.DisplayName)" -output true
-                                } catch {
-                                    Write-Warning "Failed to add $destinationEmail : $_"
-                                    Write-Log "Failed to add $destinationEmail to $($group.DisplayName)" -errorMessage $_.Exception.Message -exception $_.Exception -output true -color Red
-                                }
-                            }
-                    }
-                } else {
-                        Write-Warning "Destination user $destinationUPN not found."
-                        Write-Log "Destination user $destinationUPN not found." -output true -color Yellow
+        # Check if sourceUPN is a member of the group
+        if ($memberUPNs -contains $sourceUPN) {
+            
+            # Get destination user object by email, using a cache to improve performance
+            $destinationUser = $null
+            if ($destinationUserCache.ContainsKey($destinationEmail)) {
+                $destinationUser = $destinationUserCache[$destinationEmail]
+            }
+            else {
+                try {
+                    $destinationUser = Get-MgUser -Filter "mail eq '$destinationEmail'"
+                    # Add user to cache, even if not found (cache $null) to prevent re-querying
+                    $destinationUserCache[$destinationEmail] = $destinationUser
+                }
+                catch {
+                    Write-Log "Error fetching user '$destinationEmail'." -errorMessage $_.Exception.Message -exception $_.Exception -output -color Red
                 }
             }
+
+            if ($destinationUser) {
+                # Skip if already a member
+                if ($memberIds -contains $destinationUser.Id) {
+                        Write-Log "$($destinationUser.UserPrincipalName) is already a member of $($group.DisplayName), skipping." -output
+                } else {
+                        Write-Log "Adding $destinationEmail to group $($group.DisplayName)" -output
+                        if ($TestMode) {
+                            Write-Host "[TEST MODE] No changes committed."
+                            Write-Log "[TEST MODE] Skipped actual add for $destinationEmail to $($group.DisplayName)" -output -color Yellow
+                        } else {
+                            try {
+                                New-MgGroupMember -GroupId $group.Id -DirectoryObjectId $destinationUser.Id
+                                Write-Log "$destinationEmail successfully added to $($group.DisplayName)" -output
+                            } catch {
+                                Write-Log "Failed to add $destinationEmail to $($group.DisplayName)" -errorMessage $_.Exception.Message -exception $_.Exception -output -color Red
+                            }
+                        }
+                }
+            } else {
+                    Write-Log "Destination user $destinationEmail not found." -output -color Yellow
+            }
         }
+    }
 }
+
+Write-Log "Script finished." -output
+Disconnect-MgGraph
